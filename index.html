@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Polaroid Maker</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Polaroid Maker</h1>
+      <p>Monte suas folhas de fotos sem precisar abrir o Word.</p>
+    </div>
+    <div class="top-actions">
+      <label class="button primary" for="fileInput">+ Adicionar fotos</label>
+      <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden />
+      <button id="clearBtn" class="button ghost">Limpar</button>
+    </div>
+  </header>
+
+  <main class="app">
+    <section class="left-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Fotos</h2>
+          <span id="photoCount">0 fotos</span>
+        </div>
+        <button id="addMoreBtn" class="small-button">Adicionar</button>
+      </div>
+
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">＋</div>
+        <strong>Arraste suas fotos aqui</strong>
+        <span>ou clique em “Adicionar fotos”</span>
+      </div>
+      <div id="photoList" class="photo-list"></div>
+    </section>
+
+    <section class="workspace">
+      <div class="workspace-head">
+        <div>
+          <h2>Pré-visualização</h2>
+          <span>9 polaroids por folha</span>
+        </div>
+        <div class="page-nav">
+          <button id="prevPage" class="icon-button" title="Página anterior">‹</button>
+          <span id="pageLabel">Página 1 de 1</span>
+          <button id="nextPage" class="icon-button" title="Próxima página">›</button>
+        </div>
+      </div>
+
+      <div id="dropZone" class="paper-area">
+        <div id="paper" class="paper"></div>
+      </div>
+    </section>
+
+    <aside class="right-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Ajustar foto</h2>
+          <span id="selectedLabel">Selecione uma foto</span>
+        </div>
+      </div>
+
+      <div id="editorEmpty" class="editor-empty">
+        <div class="editor-icon">↗</div>
+        <p>Selecione uma foto na folha para ajustar o enquadramento.</p>
+      </div>
+
+      <div id="editor" class="editor hidden">
+        <div id="editorPreview" class="editor-preview">
+          <div class="editor-image-wrap"><img id="editorImage" alt="Prévia da foto" /></div>
+        </div>
+        <label class="control-label" for="zoomRange">Zoom <span id="zoomValue">100%</span></label>
+        <input id="zoomRange" type="range" min="10" max="300" value="100" />
+        <div class="zoom-actions">
+          <button id="fitBtn" class="button ghost">Foto inteira</button>
+          <button id="resetBtn" class="button ghost">↺ Reposicionar</button>
+        </div>
+        <div class="hint">Você pode reduzir bastante o tamanho da foto para caber inteira, inclusive fotos horizontais. Arraste para posicionar.</div>
+        <button id="removeSelectedBtn" class="danger-button">Remover esta foto</button>
+      </div>
+
+      <div class="export-box">
+        <h3>Pronto para imprimir</h3>
+        <p>O arquivo mantém o tamanho A4. Na impressão, escolha <strong>100% / tamanho real</strong> e desative “ajustar à página”.</p>
+        <div class="export-grid">
+          <button id="pdfBtn" class="export-button">PDF</button>
+          <button id="jpgBtn" class="export-button">JPG</button>
+          <button id="pngBtn" class="export-button">PNG</button>
+        </div>
+        <div id="status" class="status"></div>
+      </div>
+    </aside>
+  </main>
+
+
+  <script src="app.js"></script>
+</body>
+</html>
