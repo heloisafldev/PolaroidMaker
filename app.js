@@ -27,11 +27,53 @@ const SLOTS = [
 const PHOTO_INSET_X = 10.25 / 2.83464567;
 const PHOTO_INSET_Y = 15.95 / 2.83464567;
 
+const STORAGE_KEY = 'polaroid-maker-state-v2';
+let restoringState = false;
+
 const state = {
   photos: [],
   selectedId: null,
   page: 0
 };
+
+function saveState() {
+  if (restoringState) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      page: state.page,
+      selectedId: state.selectedId,
+      photos: state.photos.map(p => ({ id:p.id, src:p.src, name:p.name, zoom:p.zoom, offsetX:p.offsetX, offsetY:p.offsetY }))
+    }));
+  } catch (error) {
+    console.warn('Não foi possível salvar:', error);
+    setStatus('O armazenamento do navegador está cheio. Algumas alterações podem não ser salvas.');
+  }
+}
+
+async function restoreState() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    restoringState = true;
+    const saved = JSON.parse(raw);
+    state.page = Number(saved.page) || 0;
+    state.selectedId = saved.selectedId || null;
+    for (const item of saved.photos || []) {
+      if (!item.src) continue;
+      const img = new Image(); img.src = item.src;
+      await new Promise(resolve => { img.onload=resolve; img.onerror=resolve; });
+      if (!img.naturalWidth) continue;
+      state.photos.push({ id:item.id||uid(), file:null, src:item.src, url:item.src, img, name:item.name||'Foto', zoom:Number(item.zoom)||100, offsetX:Number(item.offsetX)||0, offsetY:Number(item.offsetY)||0 });
+    }
+    if (!state.photos.some(p => p.id === state.selectedId)) state.selectedId = state.photos[0]?.id ?? null;
+    ensurePage();
+  } catch (error) { console.warn('Não foi possível restaurar o projeto:', error); localStorage.removeItem(STORAGE_KEY); }
+  finally { restoringState = false; }
+}
+
+function fileToDataURL(file) {
+  return new Promise((resolve,reject) => { const reader=new FileReader(); reader.onload=()=>resolve(reader.result); reader.onerror=reject; reader.readAsDataURL(file); });
+}
 
 const $ = id => document.getElementById(id);
 const fileInput = $('fileInput');
@@ -48,42 +90,35 @@ const editor = $('editor');
 
 function uid() { return crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random(); }
 
-function addFiles(files) {
+async function addFiles(files) {
   const valid = [...files].filter(f => f.type.startsWith('image/'));
-  valid.forEach(file => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      state.photos.push({
-        id: uid(), file, url, img,
-        name: file.name,
-        zoom: 100,
-        offsetX: 0,
-        offsetY: 0
-      });
+  for (const file of valid) {
+    try {
+      const src = await fileToDataURL(file);
+      const img = new Image(); img.src = src;
+      await new Promise((resolve,reject) => { img.onload=resolve; img.onerror=reject; });
+      state.photos.push({ id:uid(), file, src, url:src, img, name:file.name, zoom:100, offsetX:0, offsetY:0 });
       if (state.selectedId === null) state.selectedId = state.photos[state.photos.length - 1].id;
-      ensurePage();
-      render();
-    };
-    img.src = url;
-  });
+    } catch(error) { console.warn('Não foi possível adicionar:',file.name,error); }
+  }
+  ensurePage(); saveState(); render();
 }
 
 function removePhoto(id) {
   const index = state.photos.findIndex(p => p.id === id);
   if (index < 0) return;
-  URL.revokeObjectURL(state.photos[index].url);
   state.photos.splice(index, 1);
   if (state.selectedId === id) state.selectedId = state.photos[Math.max(0, index - 1)]?.id ?? null;
   ensurePage();
+  saveState();
   render();
 }
 
 function clearAll() {
-  state.photos.forEach(p => URL.revokeObjectURL(p.url));
   state.photos = [];
   state.selectedId = null;
   state.page = 0;
+  localStorage.removeItem(STORAGE_KEY);
   render();
 }
 
@@ -172,20 +207,21 @@ function containScale(img, boxW, boxH) {
 }
 
 function applyImageTransform(el, photo, box) {
-  const boxW = box.clientWidth || 130;
-  const boxH = box.clientHeight || 173;
+  const boxW = box.clientWidth || box.width || 130;
+  const boxH = box.clientHeight || box.height || 173;
   const base = coverScale(photo.img, boxW, boxH);
   const scale = base * (photo.zoom / 100);
   el.width = photo.img.naturalWidth * scale;
   el.height = photo.img.naturalHeight * scale;
-  el.style.left = `${(boxW - el.width) / 2 + photo.offsetX}px`;
-  el.style.top = `${(boxH - el.height) / 2 + photo.offsetY}px`;
+  el.style.left = `${(boxW - el.width) / 2 + photo.offsetX * boxW}px`;
+  el.style.top = `${(boxH - el.height) / 2 + photo.offsetY * boxH}px`;
 }
 
 function selectPhoto(id) {
   state.selectedId = id;
   const p = getSelected();
   if (p) state.page = Math.floor(state.photos.indexOf(p) / 9);
+  saveState();
   render();
 }
 
@@ -217,8 +253,8 @@ function applyEditorTransform() {
   const scale = base * (p.zoom / 100);
   editorImage.width = editorImage.naturalWidth * scale;
   editorImage.height = editorImage.naturalHeight * scale;
-  editorImage.style.left = `${(boxW - editorImage.width) / 2 + p.offsetX * .95}px`;
-  editorImage.style.top = `${(boxH - editorImage.height) / 2 + p.offsetY * .95}px`;
+  editorImage.style.left = `${(boxW - editorImage.width) / 2 + p.offsetX * boxW}px`;
+  editorImage.style.top = `${(boxH - editorImage.height) / 2 + p.offsetY * boxH}px`;
 }
 
 let drag = null;
@@ -226,20 +262,21 @@ function startDrag(e, photo, box, img) {
   e.preventDefault();
   state.selectedId = photo.id;
   const rect = box.getBoundingClientRect();
-  drag = { photo, startX: e.clientX, startY: e.clientY, x: photo.offsetX, y: photo.offsetY, rect, img };
+  drag = { photo, startX: e.clientX, startY: e.clientY, x: photo.offsetX, y: photo.offsetY, rect, box, img };
   window.addEventListener('pointermove', onDrag);
   window.addEventListener('pointerup', endDrag, { once: true });
 }
 function onDrag(e) {
   if (!drag) return;
-  drag.photo.offsetX = drag.x + (e.clientX - drag.startX);
-  drag.photo.offsetY = drag.y + (e.clientY - drag.startY);
-  applyImageTransform(drag.img, drag.photo, drag.rect);
+  drag.photo.offsetX = drag.x + (e.clientX - drag.startX) / drag.rect.width;
+  drag.photo.offsetY = drag.y + (e.clientY - drag.startY) / drag.rect.height;
+  applyImageTransform(drag.img, drag.photo, drag.box);
   applyEditorTransform();
 }
 function endDrag() {
   window.removeEventListener('pointermove', onDrag);
   drag = null;
+  saveState();
   renderPhotoList();
 }
 
@@ -249,11 +286,24 @@ zoomRange.addEventListener('input', () => {
   zoomValue.textContent = `${p.zoom}%`;
   renderPaper();
   applyEditorTransform();
+  saveState();
+});
+
+$('fitBtn').addEventListener('click', () => {
+  const p = getSelected(); if (!p) return;
+  const box = editorPreview.querySelector('.editor-image-wrap');
+  if (!box) return;
+  const cover = coverScale(p.img, box.clientWidth, box.clientHeight);
+  const contain = containScale(p.img, box.clientWidth, box.clientHeight);
+  p.zoom = Math.max(10, Math.min(300, Math.round(contain / cover * 100)));
+  p.offsetX = 0; p.offsetY = 0;
+  saveState(); render();
 });
 
 $('resetBtn').addEventListener('click', () => {
   const p = getSelected(); if (!p) return;
   p.zoom = 100; p.offsetX = 0; p.offsetY = 0;
+  saveState();
   render();
 });
 $('removeSelectedBtn').addEventListener('click', () => { const p = getSelected(); if (p) removePhoto(p.id); });
@@ -298,8 +348,8 @@ function renderPageToCanvas(pageIndex, scale = 3) {
     const base = Math.max(pw / photo.img.naturalWidth, ph / photo.img.naturalHeight);
     const sc = base * photo.zoom / 100;
     const iw = photo.img.naturalWidth * sc, ih = photo.img.naturalHeight * sc;
-    const dx = x + ix + (pw - iw) / 2 + photo.offsetX * pxPerMm;
-    const dy = y + iy + (ph - ih) / 2 + photo.offsetY * pxPerMm;
+    const dx = x + ix + (pw - iw) / 2 + photo.offsetX * pw;
+    const dy = y + iy + (ph - ih) / 2 + photo.offsetY * ph;
     ctx.drawImage(photo.img, dx, dy, iw, ih);
     ctx.restore();
     ctx.strokeRect(x + ix, y + iy, pw, ph);
@@ -348,5 +398,9 @@ function setStatus(text) { $('status').textContent = text; }
 function escapeHtml(text) { return text.replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 
 window.addEventListener('resize', () => { if (getSelected()) applyEditorTransform(); });
+window.addEventListener('beforeunload', saveState);
 
-render();
+(async function init() {
+  await restoreState();
+  render();
+})();
