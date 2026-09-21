@@ -367,7 +367,6 @@ function renderPageToCanvas(pageIndex, scale = 3) {
     const dy = y + iy + layout.top;
     ctx.drawImage(photo.img, dx, dy, iw, ih);
     ctx.restore();
-    ctx.strokeRect(x + ix, y + iy, pw, ph);
   });
   return canvas;
 }
