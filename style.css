@@ -124,7 +124,7 @@ button, label { cursor: pointer; }
 .slot-image-window {
   position: absolute;
   overflow: hidden;
-  border: 1px solid #222;
+  border: 0;
   background: #eee;
 }
 .slot-image {
@@ -159,7 +159,7 @@ button, label { cursor: pointer; }
   width: 86.34%;
   height: 70.94%;
   overflow: hidden;
-  border: 1px solid #222;
+  border: 0;
   background: #eee;
   touch-action: none;
 }
