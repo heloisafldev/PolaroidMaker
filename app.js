@@ -182,8 +182,9 @@ function renderPaper() {
       img.className = 'slot-image';
       img.src = photo.url;
       img.alt = '';
-      applyImageTransform(img, photo, win);
+      img.onload = () => applyImageTransform(img, photo, win);
       win.appendChild(img);
+      if (img.complete) applyImageTransform(img, photo, win);
       card.appendChild(win);
       card.addEventListener('pointerdown', e => startDrag(e, photo, win, img));
     } else {
@@ -206,15 +207,27 @@ function containScale(img, boxW, boxH) {
   return Math.min(boxW / img.naturalWidth, boxH / img.naturalHeight);
 }
 
-function applyImageTransform(el, photo, box) {
-  const boxW = box.clientWidth || box.width || 130;
-  const boxH = box.clientHeight || box.height || 173;
-  const base = coverScale(photo.img, boxW, boxH);
+function getImageLayout(img, boxW, boxH, photo) {
+  if (!img?.naturalWidth || !img?.naturalHeight || !boxW || !boxH) return null;
+  const base = coverScale(img, boxW, boxH);
   const scale = base * (photo.zoom / 100);
-  el.width = photo.img.naturalWidth * scale;
-  el.height = photo.img.naturalHeight * scale;
-  el.style.left = `${(boxW - el.width) / 2 + photo.offsetX * boxW}px`;
-  el.style.top = `${(boxH - el.height) / 2 + photo.offsetY * boxH}px`;
+  const width = img.naturalWidth * scale;
+  const height = img.naturalHeight * scale;
+  return {
+    width,
+    height,
+    left: (boxW - width) / 2 + photo.offsetX * boxW,
+    top: (boxH - height) / 2 + photo.offsetY * boxH
+  };
+}
+
+function applyImageTransform(el, photo, box) {
+  const layout = getImageLayout(photo.img, box.clientWidth || box.width, box.clientHeight || box.height, photo);
+  if (!layout) return;
+  el.width = layout.width;
+  el.height = layout.height;
+  el.style.left = `${layout.left}px`;
+  el.style.top = `${layout.top}px`;
 }
 
 function selectPhoto(id) {
@@ -238,6 +251,7 @@ function renderEditor() {
   $('selectedLabel').textContent = p.name;
   zoomRange.value = p.zoom;
   zoomValue.textContent = `${p.zoom}%`;
+  editorImage.onload = () => applyEditorTransform();
   editorImage.src = p.url;
   requestAnimationFrame(() => applyEditorTransform());
 }
@@ -247,14 +261,12 @@ function applyEditorTransform() {
   if (!p || !editorImage.complete) return;
   const box = editorPreview.querySelector('.editor-image-wrap');
   if (!box) return;
-  const boxW = box.clientWidth;
-  const boxH = box.clientHeight;
-  const base = coverScale(editorImage, boxW, boxH);
-  const scale = base * (p.zoom / 100);
-  editorImage.width = editorImage.naturalWidth * scale;
-  editorImage.height = editorImage.naturalHeight * scale;
-  editorImage.style.left = `${(boxW - editorImage.width) / 2 + p.offsetX * boxW}px`;
-  editorImage.style.top = `${(boxH - editorImage.height) / 2 + p.offsetY * boxH}px`;
+  const layout = getImageLayout(editorImage, box.clientWidth, box.clientHeight, p);
+  if (!layout) return;
+  editorImage.width = layout.width;
+  editorImage.height = layout.height;
+  editorImage.style.left = `${layout.left}px`;
+  editorImage.style.top = `${layout.top}px`;
 }
 
 let drag = null;
@@ -345,11 +357,14 @@ function renderPageToCanvas(pageIndex, scale = 3) {
     const ph = PHOTO_H_MM * pxPerMm;
     ctx.save();
     ctx.beginPath(); ctx.rect(x + ix, y + iy, pw, ph); ctx.clip();
-    const base = Math.max(pw / photo.img.naturalWidth, ph / photo.img.naturalHeight);
-    const sc = base * photo.zoom / 100;
-    const iw = photo.img.naturalWidth * sc, ih = photo.img.naturalHeight * sc;
-    const dx = x + ix + (pw - iw) / 2 + photo.offsetX * pw;
-    const dy = y + iy + (ph - ih) / 2 + photo.offsetY * ph;
+    const layout = getImageLayout(photo.img, pw, ph, photo);
+    if (!layout) {
+      ctx.restore();
+      return;
+    }
+    const iw = layout.width, ih = layout.height;
+    const dx = x + ix + layout.left;
+    const dy = y + iy + layout.top;
     ctx.drawImage(photo.img, dx, dy, iw, ih);
     ctx.restore();
     ctx.strokeRect(x + ix, y + iy, pw, ph);
